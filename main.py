@@ -1,4 +1,5 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException, status
+from fastapi.responses import JSONResponse
 from models import Peer, Base, Slice, SliceResults
 from database import SessionLocal, engine
 import json
@@ -39,8 +40,9 @@ def start_slice(time, starting_peers, chain):
     db.add(new_slice_res)
     db.commit()
     db.refresh(new_slice_res)
-    data = {"new_slice_id": new_slice_id}
-    return data
+    response = {"id": new_slice_id}
+    headers = {"Content-Type": "application/json"}
+    return JSONResponse(content=response, headers=headers, status_code=201)
 
 
 @app.post("/register_peers")
@@ -65,9 +67,11 @@ def register_peers(slice_id, peer_list):
             db.add(new_slice_res)
         db.commit()
         db.refresh(new_slice_res)
-        return f'slice {slice_id} was updated'
+        response = {"id": slice_id}
+        headers = {"Content-Type": "application/json"}
+        return JSONResponse(content=response, headers=headers, status_code=201)
     else:
-        return "slice is not open"
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slice is not opened")
 
 
 @app.post("/finish_slice")
@@ -75,9 +79,14 @@ def finish_slice(slice_id):
     db = SessionLocal()
     slice_id = int(slice_id)
     open_slices.remove(slice_id)
-    db.query(Slice).filter(Slice.id == slice_id).first().is_open = False
-    db.commit()
-    return f'slice {slice_id} is finished'
+    if db.query(Slice).filter(Slice.id == slice_id).first().is_open:
+        db.query(Slice).filter(Slice.id == slice_id).first().is_open = False
+        db.commit()
+        response = {"id": slice_id}
+        headers = {"Content-Type": "application/json"}
+        return JSONResponse(content=response, headers=headers, status_code=200)
+    else:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slice is not opened")
 
 
 @app.post("/cancel_slice")
@@ -96,9 +105,12 @@ def cancel_slice(slice_id):
         that_slice.delete()
         db.commit()
         open_slices.remove(slice_id)
-        return f'slice {slice_id} was canceled'
+        response = {"id": slice_id}
+        headers = {"Content-Type": "application/json"}
+        return JSONResponse(content=response, headers=headers, status_code=200)
     else:
-        return f'slice {slice_id} was not opened'
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slice is not opened")
+
 
 
 @app.post("/delete_slice")
@@ -117,11 +129,15 @@ def delete_slice(slice_id):
                 slice_res.delete()
             that_slice.delete()
             db.commit()
-            return f'slice {slice_id} was deleted'
+
+            response = {"id": slice_id}
+            headers = {"Content-Type": "application/json"}
+            return JSONResponse(content=response, headers=headers, status_code=200)
         else:
-            return "No such slice"
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No such slice")
     else:
-        return f'Slice {slice_id} is open. Cancel before delete'
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Close before delete")
+
 
 
 @app.get("/all_data_get/")
