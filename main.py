@@ -1,5 +1,5 @@
 from fastapi import FastAPI, HTTPException, status
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, HTMLResponse
 from models import Peer, Base, Slice, SliceResults
 from database import SessionLocal, engine
 import json
@@ -148,7 +148,14 @@ def get_all_peer_data():
     connection_data = db.query(SliceResults).all()
     data = {'peer data': peer_data, 'slice data': slice_data, 'slice_results_data': connection_data}
     return data
-
+@app.get("/", response_class=HTMLResponse)
+def show_data():
+    db = SessionLocal()
+    peer_data = db.query(Peer).all()
+    slice_data = db.query(Slice).all()
+    connection_data = db.query(SliceResults).all()
+    data = {'peer data': peer_data, 'slice data': slice_data, 'slice_results_data': connection_data}
+    return f'{data}'
 
 if __name__ == "__main__":
     import uvicorn
