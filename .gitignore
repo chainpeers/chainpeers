@@ -1,0 +1,7 @@
+# created by virtualenv automatical
+
+venv
+peerdata.db
+.idea
+idea
+go-ethereum
