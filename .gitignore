@@ -3,5 +3,5 @@
 venv
 peerdata.db
 .idea
-idea
 go-ethereum
+__pycache__
