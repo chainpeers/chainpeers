@@ -2,16 +2,21 @@ from fastapi import FastAPI, HTTPException, status, Request, Body
 from fastapi.responses import JSONResponse, HTMLResponse
 from models import Peer, Base, Slice, SliceResults
 from database import SessionLocal, engine
-import json
 from pydantic import BaseModel
 from sqlalchemy.orm import class_mapper
 from fastapi.templating import Jinja2Templates
-
+import logging
+import zlib
+import json
 
 app = FastAPI()
 Base.metadata.create_all(bind=engine)
 open_slices = []
 templates = Jinja2Templates(directory='templates')
+
+gunicorn_error_logger = logging.getLogger("gunicorn.error")
+uvicorn_access_logger = logging.getLogger("uvicorn.access")
+uvicorn_access_logger.handlers = gunicorn_error_logger.handlers
 
 
 def serialize(model_instance):
@@ -19,10 +24,11 @@ def serialize(model_instance):
     columns = [c.key for c in class_mapper(model_instance.__class__).columns]
     return {c: getattr(model_instance, c) for c in columns}
 
+
 @app.on_event("startup")
 async def startup_event():
     db = SessionLocal()
-    opened = db.query(Slice).filter(Slice.is_open == True).all()
+    opened = db.query(Slice).filter(Slice.is_open is True).all()
     for op in opened:
         open_slices.append(op.id)
 
@@ -42,7 +48,8 @@ class RegisterRequest(BaseModel):
 async def start_slice(slice_request: SliceRequest = Body(...)):
     peer_pack = []
     db = SessionLocal()
-    new_slice = Slice(time=slice_request.time, chain_name=slice_request.chain, starting_peers=slice_request.starting_peers, is_open=True)
+    new_slice = Slice(time=slice_request.time, chain_name=slice_request.chain,
+                      starting_peers=slice_request.starting_peers, is_open=True)
     db.add(new_slice)
     db.commit()
     db.refresh(new_slice)
@@ -70,12 +77,15 @@ async def start_slice(slice_request: SliceRequest = Body(...)):
 
 
 @app.post("/register_peers")
-async def register_peers(register_request: RegisterRequest = Body(...)):
+async def register_peers(request: Request):
+    compressed_data = await request.body()
+    decompressed_data = zlib.decompress(compressed_data)
+    register_request = json.loads(decompressed_data.decode('utf-8'))
     peer_pack = []
-    slice_id = int(register_request.slice_id)
+    slice_id = int(register_request['slice_id'])
     if slice_id in open_slices:
         db = SessionLocal()
-        peer_list = json.loads(register_request.peer_list)
+        peer_list = json.loads(register_request['peer_list'])
         for peer in peer_list:
             new_peer = Peer(address=peer['address'], version=peer['version'])
             db.add(new_peer)
@@ -176,7 +186,6 @@ async def get_all_peer_data():
     return data
 
 
-
 @app.get("/peers/{version}")
 async def get_peers(version: str):
     version = str(version)
@@ -197,6 +206,3 @@ def show_data(request: Request):
     db.close()
     data = {'peer_data': peer_data, 'slice_data': slice_data, 'slice_results_data': connection_data}
     return templates.TemplateResponse("index.html", {"request": request, "data": data})
-
-
-

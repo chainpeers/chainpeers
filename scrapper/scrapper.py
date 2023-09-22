@@ -4,6 +4,8 @@ import os
 import time
 import requests
 import json
+import zlib
+import json
 import logging
 
 MAIN_URL = "http://localhost:8000"
@@ -64,22 +66,24 @@ class CrawlerProcess:
             self.proc.terminate()
         self.is_running = False
 
+    import time
+    import subprocess
+    import requests
+    import json
+    import zlib
+
     def data_send(self):
         name_request = "register_peers"
-        time_step = 1
-        while self.is_running:
+        time_step = 0.2
+        batch_size = 10  # Number of log entries to include in each batch
+        log_entries = []  # List to store log entries for batching
 
+        while self.is_running:
             was = time.time()
             # every time_step seconds
             while time.time() - was < time_step:
                 pass
             else:
-                # with open(str(json_loc), 'r', encoding='utf-8') as f:  # открыли файл с данными
-                #     f = f.read()
-                #     text = json.loads(f)
-                #     c = 0
-                #     print(len(text))
-
                 with open('logs.json', 'r+', encoding='utf-8') as logfile:
                     register_list = ''
                     while 1:
@@ -87,7 +91,7 @@ class CrawlerProcess:
                         logline = logfile.readline()
                         if not logline:
                             break
-                        logline = eval(logline)  # turn log line string to dict
+                        logline = json.loads(logline)  # turn log line string to dict
                         # if 0 is id and 3 is score
                         first_key = list(logline.keys())[0]
                         forth_key = list(logline.keys())[3]
@@ -98,18 +102,31 @@ class CrawlerProcess:
                             with open('key.txt', 'w', encoding='utf-8') as enr_id:
                                 # write id from log to a txt
                                 enr_id.write(logline['id'])
-                            # get enode address from id
                             node_address = subprocess.check_output([dev_loc, 'key', 'to-enode', 'key.txt'], text=True)
                             register_list += f'{{"address":"{node_address[:-2]}","version":"{logline["seq"]}","score":"{logline["score"]}"}},'  # [:-2] key to enode makes logs with /n
-                    # prepare to send post
-                    register_list = register_list[:len(register_list)-1]  # remove last comma
-                    register_list = '[' + register_list + ']'
-                    payload = {"slice_id": self.slice_id,
-                               "peer_list": register_list,
-                               "time": f'{time.time()}'}
-                    full_url = MAIN_URL + "/" + name_request
-                    # send post
-                    requests.post(full_url, json=payload)
+
+                        # Add log entry to batch
+                        log_entries.append(logline)
+
+                        # Check if batch size is reached
+                        if len(log_entries) >= batch_size:
+                            # Prepare batch for sending
+                            register_list = register_list[:len(register_list) - 1]  # remove last comma
+                            register_list = '[' + register_list + ']'
+                            payload = {"slice_id": self.slice_id,
+                                       "peer_list": register_list,
+                                       "time": f'{time.time()}'}
+                            full_url = MAIN_URL + "/" + name_request
+                            # compress payload
+                            compressed_payload = zlib.compress(json.dumps(payload).encode('utf-8'))
+                            # send post
+                            requests.post(full_url, data=compressed_payload)
+
+                            # Clear log entries for the next batch
+                            log_entries = []
+                            register_list = ''
+
+                    # Truncate the log file after processing all entries
                     logfile.truncate()
 
 
