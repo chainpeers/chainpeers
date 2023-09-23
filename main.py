@@ -1,35 +1,65 @@
-from fastapi import FastAPI, HTTPException, status
+from fastapi import FastAPI, HTTPException, status, Request, Body
 from fastapi.responses import JSONResponse, HTMLResponse
 from models import Peer, Base, Slice, SliceResults
 from database import SessionLocal, engine
+from pydantic import BaseModel
+from sqlalchemy.orm import class_mapper
+from fastapi.templating import Jinja2Templates
+import logging
+import zlib
 import json
+
 app = FastAPI()
 Base.metadata.create_all(bind=engine)
 open_slices = []
+templates = Jinja2Templates(directory='templates')
+
+gunicorn_error_logger = logging.getLogger("gunicorn.error")
+uvicorn_access_logger = logging.getLogger("uvicorn.access")
+uvicorn_access_logger.handlers = gunicorn_error_logger.handlers
+
+
+def serialize(model_instance):
+    """Transforms a model instance into a dictionary."""
+    columns = [c.key for c in class_mapper(model_instance.__class__).columns]
+    return {c: getattr(model_instance, c) for c in columns}
 
 
 @app.on_event("startup")
 async def startup_event():
     db = SessionLocal()
-    opened = db.query(Slice).filter(Slice.is_open == True).all()
+    opened = db.query(Slice).filter(Slice.is_open is True).all()
     for op in opened:
         open_slices.append(op.id)
 
 
+class SliceRequest(BaseModel):
+    time: str
+    starting_peers: str
+    chain: str
+
+
+class RegisterRequest(BaseModel):
+    slice_id: str
+    peer_list: str
+
+
 @app.post("/start_slice")
-def start_slice(time, starting_peers, chain):
+async def start_slice(slice_request: SliceRequest = Body(...)):
     peer_pack = []
     db = SessionLocal()
-    new_slice = Slice(time=time, chain_name=chain, starting_peers=starting_peers, is_open=True)
+    new_slice = Slice(time=slice_request.time, chain_name=slice_request.chain,
+                      starting_peers=slice_request.starting_peers, is_open=True)
     db.add(new_slice)
     db.commit()
     db.refresh(new_slice)
     new_slice_id = new_slice.id
     open_slices.append(new_slice_id)
 
-    peer_list = json.loads(starting_peers)
+    peer_list = json.loads(slice_request.starting_peers)
     for peer in peer_list:
-        new_peer = Peer(address=peer['address'], version=peer['version'], is_starting=True)
+        new_peer = Peer(address=peer['address'], version=peer['version'], time=slice_request.time,
+                        score=peer['score'], is_starting=True)
         db.add(new_peer)
         db.commit()
         db.refresh(new_peer)
@@ -40,18 +70,22 @@ def start_slice(time, starting_peers, chain):
     db.add(new_slice_res)
     db.commit()
     db.refresh(new_slice_res)
+    db.close()
     response = {"id": new_slice_id}
     headers = {"Content-Type": "application/json"}
     return JSONResponse(content=response, headers=headers, status_code=201)
 
 
 @app.post("/register_peers")
-def register_peers(slice_id, peer_list):
+async def register_peers(request: Request):
+    compressed_data = await request.body()
+    decompressed_data = zlib.decompress(compressed_data)
+    register_request = json.loads(decompressed_data.decode('utf-8'))
     peer_pack = []
-    slice_id = int(slice_id)
+    slice_id = int(register_request['slice_id'])
     if slice_id in open_slices:
         db = SessionLocal()
-        peer_list = json.loads(peer_list)
+        peer_list = json.loads(register_request['peer_list'])
         for peer in peer_list:
             new_peer = Peer(address=peer['address'], version=peer['version'])
             db.add(new_peer)
@@ -67,6 +101,7 @@ def register_peers(slice_id, peer_list):
             db.add(new_slice_res)
         db.commit()
         db.refresh(new_slice_res)
+        db.close()
         response = {"id": slice_id}
         headers = {"Content-Type": "application/json"}
         return JSONResponse(content=response, headers=headers, status_code=201)
@@ -75,7 +110,7 @@ def register_peers(slice_id, peer_list):
 
 
 @app.post("/finish_slice")
-def finish_slice(slice_id):
+async def finish_slice(slice_id):
     db = SessionLocal()
     slice_id = int(slice_id)
     open_slices.remove(slice_id)
@@ -84,13 +119,14 @@ def finish_slice(slice_id):
         db.commit()
         response = {"id": slice_id}
         headers = {"Content-Type": "application/json"}
+        db.close()
         return JSONResponse(content=response, headers=headers, status_code=200)
     else:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slice is not opened")
 
 
 @app.post("/cancel_slice")
-def cancel_slice(slice_id):
+async def cancel_slice(slice_id):
     slice_id = int(slice_id)
     if slice_id in open_slices:
         db = SessionLocal()
@@ -104,6 +140,7 @@ def cancel_slice(slice_id):
             slice_res.delete()
         that_slice.delete()
         db.commit()
+        db.close()
         open_slices.remove(slice_id)
         response = {"id": slice_id}
         headers = {"Content-Type": "application/json"}
@@ -112,9 +149,8 @@ def cancel_slice(slice_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Slice is not opened")
 
 
-
 @app.post("/delete_slice")
-def delete_slice(slice_id):
+async def delete_slice(slice_id):
     slice_id = int(slice_id)
     if slice_id not in open_slices:
         db = SessionLocal()
@@ -129,7 +165,7 @@ def delete_slice(slice_id):
                 slice_res.delete()
             that_slice.delete()
             db.commit()
-
+            db.close()
             response = {"id": slice_id}
             headers = {"Content-Type": "application/json"}
             return JSONResponse(content=response, headers=headers, status_code=200)
@@ -139,26 +175,34 @@ def delete_slice(slice_id):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Close before delete")
 
 
-
 @app.get("/all_data_get/")
-def get_all_peer_data():
+async def get_all_peer_data():
     db = SessionLocal()
     peer_data = db.query(Peer).all()
     slice_data = db.query(Slice).all()
     connection_data = db.query(SliceResults).all()
-    data = {'peer data': peer_data, 'slice data': slice_data, 'slice_results_data': connection_data}
+    db.close()
+    data = {'peer_data': peer_data, 'slice_data': slice_data, 'slice_results_data': connection_data}
     return data
+
+
+@app.get("/peers/{version}")
+async def get_peers(version: str):
+    version = str(version)
+    db = SessionLocal()
+    peers = db.query(Peer).filter(Peer.version == version).all()
+    db.close()
+    peers = [serialize(peer) for peer in peers]
+    data = {'peers': peers}
+    return data
+
+
 @app.get("/", response_class=HTMLResponse)
-def show_data():
+def show_data(request: Request):
     db = SessionLocal()
     peer_data = db.query(Peer).all()
     slice_data = db.query(Slice).all()
     connection_data = db.query(SliceResults).all()
-    data = {'peer data': peer_data, 'slice data': slice_data, 'slice_results_data': connection_data}
-    return f'{data}'
-
-if __name__ == "__main__":
-    import uvicorn
-
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
-
+    db.close()
+    data = {'peer_data': peer_data, 'slice_data': slice_data, 'slice_results_data': connection_data}
+    return templates.TemplateResponse("index.html", {"request": request, "data": data})

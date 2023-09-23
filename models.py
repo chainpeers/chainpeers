@@ -10,6 +10,9 @@ class Peer(Base):
     id = Column(Integer, primary_key=True, index=True)
     address = Column(String, index=True)
     version = Column(String, index=True)
+    time = Column(String, index=True)
+    score = Column(String, index=True)
+
     is_starting = Column(BOOLEAN, index=True, default=False)
 
 
