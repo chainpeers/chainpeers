@@ -1,19 +1,27 @@
-from fastapi import FastAPI, HTTPException, status, Request, Body
+from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from models import Peer, Base, Slice, SliceResults
 from database import SessionLocal, engine
-from pydantic import BaseModel
 from sqlalchemy.orm import class_mapper
 from fastapi.templating import Jinja2Templates
+from starlette.middleware.cors import CORSMiddleware
 import logging
-import zlib
+import gzip
 import json
 
 app = FastAPI()
 Base.metadata.create_all(bind=engine)
 open_slices = []
 templates = Jinja2Templates(directory='templates')
-
+app.mount("/static", StaticFiles(directory="static"), name="static")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Разрешить все источники
+    allow_credentials=True,
+    allow_methods=["*"],  # Разрешить все методы
+    allow_headers=["*"],  # Разрешить все заголовки
+)
 gunicorn_error_logger = logging.getLogger("gunicorn.error")
 uvicorn_access_logger = logging.getLogger("uvicorn.access")
 uvicorn_access_logger.handlers = gunicorn_error_logger.handlers
@@ -33,38 +41,26 @@ async def startup_event():
         open_slices.append(op.id)
 
 
-class SliceRequest(BaseModel):
-    time: str
-    starting_peers: str
-    chain: str
-
-
-class RegisterRequest(BaseModel):
-    slice_id: str
-    peer_list: str
-
-
 @app.post("/start_slice")
-async def start_slice(slice_request: SliceRequest = Body(...)):
-    peer_pack = []
+async def start_slice(request: Request):
+    compressed_data = await request.body()
+    decompressed_data = gzip.decompress(compressed_data)
+    slice_request = json.loads(decompressed_data.decode('utf-8'))
     db = SessionLocal()
-    new_slice = Slice(time=slice_request.time, chain_name=slice_request.chain,
-                      starting_peers=slice_request.starting_peers, is_open=True)
+    new_slice = Slice(time=slice_request['time'], chain_name=slice_request['chain'],
+                      starting_peers=slice_request['starting_peers'], is_open=True)
     db.add(new_slice)
     db.commit()
     db.refresh(new_slice)
     new_slice_id = new_slice.id
     open_slices.append(new_slice_id)
-
-    peer_list = json.loads(slice_request.starting_peers)
-    for peer in peer_list:
-        new_peer = Peer(address=peer['address'], version=peer['version'], time=slice_request.time,
-                        score=peer['score'], is_starting=True)
-        db.add(new_peer)
-        db.commit()
-        db.refresh(new_peer)
-        new_peer_id = new_peer.id
-        peer_pack.append(new_peer_id)
+    peer_list = json.loads(slice_request['starting_peers'])
+    peers = [dict(address=peer['address'], version=peer['version'], score=peer['score'], time=slice_request['time'])
+             for peer in peer_list]
+    db.bulk_insert_mappings(Peer, peers)
+    db.commit()
+    peer_pack = [peer.id for peer in
+                 db.query(Peer.id).filter(Peer.address.in_([peer['address'] for peer in peers]))]
 
     new_slice_res = SliceResults(slice_id=new_slice_id, peer_ids=peer_pack)
     db.add(new_slice_res)
@@ -79,20 +75,17 @@ async def start_slice(slice_request: SliceRequest = Body(...)):
 @app.post("/register_peers")
 async def register_peers(request: Request):
     compressed_data = await request.body()
-    decompressed_data = zlib.decompress(compressed_data)
+    decompressed_data = gzip.decompress(compressed_data)
     register_request = json.loads(decompressed_data.decode('utf-8'))
-    peer_pack = []
     slice_id = int(register_request['slice_id'])
     if slice_id in open_slices:
         db = SessionLocal()
         peer_list = json.loads(register_request['peer_list'])
-        for peer in peer_list:
-            new_peer = Peer(address=peer['address'], version=peer['version'])
-            db.add(new_peer)
-            db.commit()
-            db.refresh(new_peer)
-            new_peer_id = new_peer.id
-            peer_pack.append(new_peer_id)
+        peers = [dict(address=peer['address'], version=peer['version'], score=peer['score'], time=register_request['time']) for peer in peer_list]
+        db.bulk_insert_mappings(Peer, peers)
+        db.commit()
+        peer_pack = [peer.id for peer in
+                     db.query(Peer.id).filter(Peer.address.in_([peer['address'] for peer in peers]))]
         new_slice_res = db.query(SliceResults).filter(SliceResults.slice_id == slice_id).first()
         if new_slice_res:
             new_slice_res.peer_ids = new_slice_res.peer_ids + peer_pack
