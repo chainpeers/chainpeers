@@ -6,10 +6,11 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         .scrollable-div {
-            width: 100%;
+            width: 80%;
             height: 200px;
             overflow: auto;
             margin-bottom: 20px;
+            margin-right: 20%;
             border: 1px solid #000;
             padding: 10px;
         }
@@ -38,61 +39,9 @@
     </div>
 <input type="text" id="version" placeholder="Enter version">
     <button onclick="loadData()">Load Data</button>
-    <div id="addresses"></div>
+    <div id="addresses" class="scrollable-div"></div>
     <canvas id="chart"></canvas>
 
-    <script>
-        var chart;  // declare the chart variable outside the function
-
-function loadData() {
-    var version = document.getElementById('version').value;
-    axios.get('http://0.0.0.0:8000/peers/' + version)
-        .then(function (response) {
-            var peers = response.data.peers;
-            var labels = peers.map(function(peer) { return peer.time; });
-            console.log(labels)
-            var data = peers.map(function(peer) { return Number(peer.score); });
-
-            // destroy the old chart if it exists
-            if (chart) {
-                chart.destroy();
-            }
-
-            // count the number of peers with the same data and score
-            var counts = {};
-            for (var i = 0; i < peers.length; i++) {
-                var key = peers[i].time + '-' + Number(peers[i].score);
-                counts[key] = (counts[key] || 0) + 1;
-
-            }
-
-            var ctx = document.getElementById('chart').getContext('2d');
-            chart = new Chart(ctx, {
-                type: 'line',
-                data: {
-                    labels: labels,
-                    datasets: [{
-                        label: 'Score',
-                        data: data,
-                        fill: false,
-                        borderColor: 'rgb(75, 192, 192)',
-                        tension: 0.1,
-
-                    }]
-                },
-            });
-
-            // update the addresses div
-            var addresses = peers.map(function(peer) { return peer.address; }).join('<br>');
-            document.getElementById('addresses').innerHTML = addresses;
-        })
-        .catch(function (error) {
-            console.log(error);
-        });
-}
-
-
-
-    </script>
+    <script src="{{ url_for('static', path='get_peers.js') }}"></script>
 </body>
 </html>

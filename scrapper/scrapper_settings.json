@@ -1,0 +1,5 @@
+{
+  "address": "http://localhost:8000",
+  "request_delay": 1,
+  "batch_size": 30
+}
