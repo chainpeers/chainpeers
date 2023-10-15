@@ -20,7 +20,9 @@ import (
 	"errors"
 	"fmt"
 	"github.com/chainpeers/chainpeers/scrapper/devp2p/internal/ethtest"
+	"github.com/ethereum/go-ethereum/p2p/discover/v4wire"
 	"net"
+	"time"
 
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p"
@@ -97,6 +99,32 @@ func rlpxPing(ctx *cli.Context) error {
 		return fmt.Errorf("received disconnect message: %v", msg[0])
 	default:
 		return fmt.Errorf("invalid message code %d, expected handshake (code zero)", code)
+	}
+	findnode := v4wire.Findnode{
+		Expiration: uint64(time.Now().Add(20 * time.Second).Unix()),
+	}
+	packet, _, err := v4wire.Encode(ourKey, &findnode)
+	if err != nil {
+		return err
+	}
+	_, err = conn.Write(v4wire.FindnodePacket, packet)
+	if err != nil {
+		return err
+	}
+
+	code, data, _, err = conn.Read()
+	if err != nil {
+		return err
+	}
+	switch code {
+	case v4wire.NeighborsPacket:
+		var h v4wire.Neighbors
+		if err := rlp.DecodeBytes(data, &h); err != nil {
+			return fmt.Errorf("invalid handshake: %v", err)
+		}
+		fmt.Printf("%+v\n", h)
+	default:
+		return fmt.Errorf("invalid message code %d, expected neighbors (code 4)", code)
 	}
 	return nil
 }
