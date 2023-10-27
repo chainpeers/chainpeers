@@ -40,6 +40,8 @@ function loadData() {
                     }]
                 },
             });
+            var canvas = document.getElementById('chart');
+            var container = document.getElementById('chart-container');
 
             // update the addresses div
             var addresses = peers.map(function(peer) { return peer.address; }).join('<br>');
