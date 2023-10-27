@@ -4,6 +4,8 @@
     <title>Data</title>
     <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', path='styles.css') }}">
     <style>
         .scrollable-div {
             width: 80%;
@@ -17,6 +19,13 @@
     </style>
 </head>
 <body>
+
+    <div id="chart-container" style="width: 80%">
+  <canvas id="chart"></canvas>
+</div>
+    <input type="text" id="version" placeholder="Enter version">
+    <button onclick="loadData()">Load Data</button>
+    <div id="addresses" class="scrollable-div"></div>
     <div class="scrollable-div">
         <h1>Peer Data</h1>
         {% for peer in data.peer_data %}
@@ -24,12 +33,14 @@
         {% endfor %}
     </div>
 
+    <details>
+    <summary>Slice Data</summary>
     <div class="scrollable-div">
-        <h1>Slice Data</h1>
-        {% for slice in data.slice_data %}
-            <p>{{ slice.id }} - {{ slice.is_open }} - {{ slice.chain_name }} - {{ slice.time }} - {{ slice.starting_peers }}</p>
-        {% endfor %}
+    {% for slice in data.slice_data %}
+        <p>{{ slice.id }} - {{ slice.is_open }} - {{ slice.chain_name }} - {{ slice.time }} - {{ slice.starting_peers }}</p>
+    {% endfor %}
     </div>
+    </details>
 
     <div class="scrollable-div">
         <h1>Slice Results Data</h1>
@@ -37,10 +48,7 @@
             <p>{{ result.id }} - {{ result.slice_id }} - {{ result.peer_ids }}</p>
         {% endfor %}
     </div>
-<input type="text" id="version" placeholder="Enter version">
-    <button onclick="loadData()">Load Data</button>
-    <div id="addresses" class="scrollable-div"></div>
-    <canvas id="chart"></canvas>
+
 
     <script src="{{ url_for('static', path='get_peers.js') }}"></script>
 </body>
