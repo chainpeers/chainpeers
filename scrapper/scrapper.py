@@ -6,6 +6,8 @@ from requests import Session as ReqSession
 import requests
 import gzip
 import json
+from node_functions import get_enode_from_id, check_node_line
+from versionparser import rlpx_ping_call_and_unpack
 
 
 if os.environ.get('logloc') is not None:
@@ -39,18 +41,17 @@ class CrawlerProcess:
     def run_process(self):
         name_request = 'start_slice'
         payload = ''
-        with open(str(json_loc), 'r', encoding='utf-8') as f:  # открыли файл с данными
+        #  file with starting peers
+        with open(str(json_loc), 'r', encoding='utf-8') as f:
             f = f.read()
             text = json.loads(f)
-            print(len(text))
             for i in text:
                 payload += (f'{{"address":"{text[i]["record"]}",'
                             f'"version":"{text[i]["seq"]}","score":"{text[i]["score"]}"}},')
 
             payload = payload[:len(payload) - 1]
             payload = '[' + payload + ']'
-            # print(payload)
-            full_url = self.address + '/' + name_request  # Замените на свой URL
+            full_url = self.address + '/' + name_request
             payload = {
                 "time": f'{time.time()}',
                 "starting_peers": payload,
@@ -61,70 +62,69 @@ class CrawlerProcess:
             print(self.slice_id)
 
         self.proc = subprocess.Popen([dev_loc, "--log.format=json", "--verbosity=4",
-                                      log_loc, "discv4", "crawl", json_loc])
+                                      log_loc, "discv4", "crawl", json_loc],
+                                     stdout=subprocess.PIPE,
+                                     stderr=subprocess.STDOUT,
+                                     universal_newlines=True)
 
         self.is_running = True
-        self.data_send()
-        self.proc.communicate()
+        register_list = ''
+        peer_count = 0
+        name_request = "register_peers"
+        batch_size = self.batch_size
+        req_session = ReqSession()
+        #  main send cycle. soon to be changed completely
+        for line in self.proc.stdout:
+            processed_line = json.loads(line)
+            if check_node_line(processed_line):
+                node_address = get_enode_from_id(processed_line['id'], dev_loc)
+                try:
+                    info_pack = rlpx_ping_call_and_unpack(node_address[:-1], dev_loc)
+                    version = info_pack['version']
+                    client = info_pack['client']
+                    client_version = info_pack['client_version']
+                    caps = info_pack['caps']
+                # to do: add exception    
+                except:
+                    version = None
 
-    def get_input(self):
+                register_list += (f'{{"address":"{node_address[:-1]}",'
+                                  f'"version":"{version}",'
+                                  f'"score":"{processed_line["score"]}"}},')
+                peer_count += 1
+
+            if peer_count >= batch_size:
+                self.data_send(req_session, register_list, name_request)
+                peer_count = 0
+        self.proc.wait()
+
+    def crawl_stop_by_press(self):
+        #  gonna be deleted
         input("Press Enter to stop process...")
         if self.proc:
             self.proc.terminate()
         self.is_running = False
 
-    def data_send(self):
-        name_request = "register_peers"
-        time_step = self.request_delay
-        batch_size = self.batch_size
-        log_entries = []
-        req_session = ReqSession()
-
-        while self.is_running:
-            time.sleep(time_step)
-            with open(log_path, 'r+', encoding='utf-8') as logfile:
-                register_list = ''
-                while 1:
-                    logline = logfile.readline()
-                    if not logline:
-                        break
-                    logline = json.loads(logline)
-                    first_key = list(logline.keys())[0]
-                    forth_key = list(logline.keys())[3]
-                    is_first_key_id = (first_key == 'id')
-                    is_forth_key_score = (forth_key == 'score')
-                    if is_first_key_id and is_forth_key_score:
-                        subprocess.run([dev_loc, 'key', 'generate', 'key.txt'])
-                        with open('key.txt', 'w', encoding='utf-8') as enr_id:
-                            enr_id.write(logline['id'])
-                        node_address = subprocess.check_output([dev_loc, 'key', 'to-enode', 'key.txt'], text=True)
-                        register_list += (f'{{"address":"{node_address[:-2]}",'
-                                          f'"version":"{logline["seq"]}",'
-                                          f'"score":"{logline["score"]}"}},')
-                    log_entries.append(logline)
-                    if len(log_entries) >= batch_size:
-                        register_list = register_list[:len(register_list) - 1]
-                        register_list = '[' + register_list + ']'
-                        payload = {"slice_id": self.slice_id,
-                                   "peer_list": register_list,
-                                   "time": f'{time.time()}'}
-                        full_url = self.address + "/" + name_request
-                        compressed_payload = gzip.compress(json.dumps(payload).encode('utf-8'))
-                        req_session.post(full_url, data=compressed_payload)
-                        log_entries = []
-                        register_list = ''
-                logfile.truncate()
+    def data_send(self, req_ses, data, place):
+        register_list = data[:len(data) - 1]
+        register_list = '[' + register_list + ']'
+        payload = {"slice_id": self.slice_id,
+                   "peer_list": register_list,
+                   "time": f'{time.time()}'}
+        full_url = self.address + "/" + place
+        compressed_payload = gzip.compress(json.dumps(payload).encode('utf-8'))
+        req_ses.post(full_url, data=compressed_payload)
 
 
 crawl_proc = CrawlerProcess()
+
+#  going to be deleted
 process_thread = threading.Thread(target=crawl_proc.run_process)
-close_thread = threading.Thread(target=crawl_proc.get_input)
+close_thread = threading.Thread(target=crawl_proc.crawl_stop_by_press)
 
 process_thread.start()
 close_thread.start()
 process_thread.join()
 close_thread.join()
-
-
 
 
