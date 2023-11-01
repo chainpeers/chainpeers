@@ -2,7 +2,7 @@ from fastapi import FastAPI, HTTPException, status, Request
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from models import Peer, Base, Slice, SliceResults
-from database import SessionLocal, engine
+from api.database import SessionLocal, engine
 from sqlalchemy.orm import class_mapper
 from fastapi.templating import Jinja2Templates
 from starlette.middleware.cors import CORSMiddleware
