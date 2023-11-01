@@ -1,7 +1,7 @@
 # created by virtualenv automatical
 
 venv
-peerdata.db
+api/peerdata.db
 .idea/
 go-ethereum
 __pycache__/
