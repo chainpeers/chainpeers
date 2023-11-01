@@ -2,7 +2,7 @@ FROM python:3.10
 
 RUN mkdir /fastapi_server
 
-COPY ./requirements.txt /fastapi_server/requirements.txt
+COPY requirements.txt /fastapi_server/requirements.txt
 
 WORKDIR /fastapi_server
 
