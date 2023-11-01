@@ -49,13 +49,18 @@ async def start_slice(request: Request):
     db = SessionLocal()
     new_slice = Slice(time=slice_request['time'], chain_name=slice_request['chain'],
                       starting_peers=slice_request['starting_peers'], is_open=True)
+    print('i created')
     db.add(new_slice)
     db.commit()
     db.refresh(new_slice)
     new_slice_id = new_slice.id
     open_slices.append(new_slice_id)
     peer_list = json.loads(slice_request['starting_peers'])
-    peers = [dict(address=peer['address'], version=peer['version'], score=peer['score'], time=slice_request['time'])
+    peers = [dict(address=peer['address'],
+                  version=peer['version'],
+                  score=peer['score'],
+                  time=slice_request['time'],
+                  is_starting=True)
              for peer in peer_list]
     db.bulk_insert_mappings(Peer, peers)
     db.commit()
