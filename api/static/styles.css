@@ -1,0 +1,32 @@
+/* Color Scheme */
+body {
+  background-color: #f2f2f2;
+}
+
+h1 {
+  color: #333;
+}
+
+/* Font */
+body {
+  font-family: 'Roboto', sans-serif;
+}
+
+/* Element Arrangement */
+#chart {
+  margin-bottom: 20px;
+}
+#chart-container {
+    height: 80%;
+}
+.scrollable-div:nth-child(1) {
+  order: 1;
+}
+
+.scrollable-div:nth-child(2) {
+  order: 3;
+}
+
+.scrollable-div:nth-child(3) {
+  order: 2;
+}

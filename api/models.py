@@ -1,6 +1,5 @@
 from sqlalchemy import Column, Integer, String, JSON, BOOLEAN
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.ext.mutable import MutableDict
 Base = declarative_base()
 
 
