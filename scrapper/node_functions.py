@@ -1,5 +1,4 @@
 import subprocess
-import json
 
 
 def check_node_line(json_line):

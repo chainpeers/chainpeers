@@ -60,5 +60,5 @@ with concurrent.futures.ThreadPoolExecutor(max_workers=5) as executor:
         result = result_queue.get()
         if result:
             peer = result[2]
-            put_to_send(peer)
+            # put_to_send(peer)
             task_queue.put(f"command {peer}")

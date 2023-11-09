@@ -81,11 +81,7 @@ class CrawlerProcess:
                 try:
                     info_pack = rlpx_ping_call_and_unpack(node_address[:-1], dev_loc)
                     version = info_pack['version']
-                    client = info_pack['client']
-                    client_version = info_pack['client_version']
-                    caps = info_pack['caps']
-                # to do: add exception    
-                except:
+                except KeyError:
                     version = None
 
                 register_list += (f'{{"address":"{node_address[:-1]}",'
