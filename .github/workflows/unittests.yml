@@ -8,16 +8,16 @@ jobs:
    runs-on: ubuntu-latest
    steps:
      - name: Checkout code
-       uses: actions/checkout@v2
+       uses: actions/checkout@v4
      - name: Set up Python
-       uses: actions/setup-python@v2
+       uses: actions/setup-python@v4
        with:
-         python-version: 3.10
-     - name: Go to scrapper dir
-       run: cd scrapper
-     - name: Install dependencies
-       run: pip install -r requirements.txt
-     - name: Go to tests dir
-       run: cd workers/tests
-     - name: Run Unit Tests
-       run: python -m unittest discover .
+         python-version: '3.10'
+     - name: Install requirements
+       run: |
+          cd scrapper
+          pip install -r requirements.txt
+     - name: Run Unittests
+       run: |
+          cd workers/tests
+          python -m unittest discover .
