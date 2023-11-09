@@ -14,7 +14,7 @@ jobs:
        with:
          python-version: '3.10'
      - name: Go to api
-       run: cd api
+       run: cd chainpeers/api
      - name: Install dependencies api
        run: pip install -r requirements.txt
      - name: Go back
@@ -23,7 +23,9 @@ jobs:
        run: cd scrapper
      - name: Install dependencies scrapper
        run: pip install -r requirements.txt
+     - name: Go back again
+       run: cd ../
      - name: Install Ruff
        run: pip install ruff
      - name: Run Ruff
-       run: ruff lint
+       run: ruff check .
