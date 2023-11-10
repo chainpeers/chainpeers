@@ -10,9 +10,7 @@ def worker(task_queue, result_queue):
             # get task from queue
             print_out = None
             task = task_queue.get()
-            print(task)
             if task == 'None':  # Sentinel value to signal worker to stop
-                print('here')
                 break
             # run command with subprocess
             process = subprocess.Popen(task, stdout=subprocess.PIPE, stderr=subprocess.PIPE)

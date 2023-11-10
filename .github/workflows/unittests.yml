@@ -1,0 +1,24 @@
+name: Unittests
+on:
+  push:
+    branches:
+      - '**'
+jobs:
+ unittesting:
+   runs-on: ubuntu-latest
+   steps:
+     - name: Checkout code
+       uses: actions/checkout@v4
+     - name: Set up Python
+       uses: actions/setup-python@v4
+       with:
+         python-version: '3.10'
+     - name: Install requirements
+       run: |
+          cd scrapper
+          pip install -r requirements.txt
+          cd ../
+     - name: Run Unittests
+       run: |
+          cd scrapper/workers/tests
+          python -m unittest discover .
