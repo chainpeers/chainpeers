@@ -20,15 +20,12 @@ import (
 	"errors"
 	"fmt"
 	"github.com/chainpeers/chainpeers/scrapper/devp2p/internal/ethtest"
-	"github.com/ethereum/go-ethereum/p2p/discover/v4wire"
-	"net"
-	"time"
-
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/ethereum/go-ethereum/p2p"
 	"github.com/ethereum/go-ethereum/p2p/rlpx"
 	"github.com/ethereum/go-ethereum/rlp"
 	"github.com/urfave/cli/v2"
+	"net"
 )
 
 var (
@@ -99,92 +96,6 @@ func rlpxPing(ctx *cli.Context) error {
 		return fmt.Errorf("received disconnect message: %v", msg[0])
 	default:
 		return fmt.Errorf("invalid message code %d, expected handshake (code zero)", code)
-	}
-	// ping/pong
-	localaddr := fd.LocalAddr().(*net.TCPAddr)
-	remoteaddr := fd.RemoteAddr().(*net.TCPAddr)
-	ping := v4wire.Ping{
-		Version: 4,
-		From: v4wire.Endpoint{
-			IP:  localaddr.IP.To4(),
-			TCP: uint16(localaddr.Port),
-			UDP: 0,
-		},
-		To: v4wire.Endpoint{
-			IP:  remoteaddr.IP.To4(),
-			TCP: uint16(remoteaddr.Port),
-			UDP: 0,
-		},
-		Expiration: uint64(time.Now().Add(20 * time.Second).Unix()),
-	}
-	packet, _, err := v4wire.Encode(ourKey, &ping)
-	if err != nil {
-		return err
-	}
-	_, err = conn.Write(v4wire.PingPacket, packet)
-	if err != nil {
-		return err
-	}
-	code, data, _, err = conn.Read()
-	if err != nil {
-		return err
-	}
-	switch code {
-	case v4wire.PingPacket:
-		p, _, hash, err := v4wire.Decode(data)
-		if err != nil {
-			return fmt.Errorf("invalid ping: %v", err)
-		}
-		fmt.Printf("%+v\n", p)
-		pong := v4wire.Pong{
-			To:         v4wire.NewEndpoint(fd.RemoteAddr().(*net.UDPAddr), 0),
-			ReplyTok:   hash,
-			Expiration: uint64(time.Now().Add(20 * time.Second).Unix()),
-		}
-		packet, _, err := v4wire.Encode(ourKey, &pong)
-		if err != nil {
-			return err
-		}
-		_, err = conn.Write(v4wire.PongPacket, packet)
-		if err != nil {
-			return err
-		}
-	case v4wire.PongPacket:
-		var p v4wire.Pong
-		if err := rlp.DecodeBytes(data, &p); err != nil {
-			return fmt.Errorf("invalid pong: %v", err)
-		}
-		fmt.Printf("%+v\n", p)
-	default:
-		return fmt.Errorf("invalid message code %d, expected neighbors (code 4)", code)
-	}
-
-	// findnode
-	findnode := v4wire.Findnode{
-		Expiration: uint64(time.Now().Add(20 * time.Second).Unix()),
-	}
-	packet, _, err = v4wire.Encode(ourKey, &findnode)
-	if err != nil {
-		return err
-	}
-	_, err = conn.Write(v4wire.FindnodePacket, packet)
-	if err != nil {
-		return err
-	}
-
-	code, data, _, err = conn.Read()
-	if err != nil {
-		return err
-	}
-	switch code {
-	case v4wire.NeighborsPacket:
-		var h v4wire.Neighbors
-		if err := rlp.DecodeBytes(data, &h); err != nil {
-			return fmt.Errorf("invalid handshake: %v", err)
-		}
-		fmt.Printf("%+v\n", h)
-	default:
-		return fmt.Errorf("invalid message code %d, expected neighbors (code 4)", code)
 	}
 	return nil
 }

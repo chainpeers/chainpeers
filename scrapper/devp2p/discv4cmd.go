@@ -40,6 +40,7 @@ var (
 		Usage: "Node Discovery v4 tools",
 		Subcommands: []*cli.Command{
 			discv4PingCommand,
+			discv4NeighborsCommand,
 			discv4RequestRecordCommand,
 			discv4ResolveCommand,
 			discv4ResolveJSONCommand,
@@ -51,6 +52,13 @@ var (
 		Name:      "ping",
 		Usage:     "Sends ping to a node",
 		Action:    discv4Ping,
+		ArgsUsage: "<node>",
+		Flags:     discoveryNodeFlags,
+	}
+	discv4NeighborsCommand = &cli.Command{
+		Name:      "neighbors",
+		Usage:     "Request neighbors from a node",
+		Action:    discv4Neighbors,
 		ArgsUsage: "<node>",
 		Flags:     discoveryNodeFlags,
 	}
@@ -151,6 +159,23 @@ func discv4Ping(ctx *cli.Context) error {
 		return fmt.Errorf("node didn't respond: %v", err)
 	}
 	fmt.Printf("node responded to ping (RTT %v).\n", time.Since(start))
+	return nil
+}
+
+func discv4Neighbors(ctx *cli.Context) error {
+	n := getNodeArg(ctx)
+	disc := startV4(ctx)
+	defer disc.Close()
+
+	if err := disc.Ping(n); err != nil {
+		return fmt.Errorf("node didn't respond: %v", err)
+	}
+	nIter := disc.RandomNodes()
+	for nIter.Next() {
+		n2 := nIter.Node()
+		fmt.Println(n2)
+	}
+
 	return nil
 }
 
